@@ -1,0 +1,13 @@
+# Python 3.12. torch and torchvision come from the CUDA 12.6 wheel index:
+#   uv venv && uv pip install -r requirements.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
+# then call .venv/Scripts/python.exe (or .venv/bin/python) directly; uv run would re-sync to the CPU wheel.
+torch==2.14.1
+torchvision==0.29.1
+numpy==2.5.4
+pandas==3.1.1
+pyarrow==26.0.1
+opencv-python==5.1.0.95
+matplotlib==3.11.2
+huggingface-hub==2.4.0
+remotezip==0.12.6
+requests==2.34.2

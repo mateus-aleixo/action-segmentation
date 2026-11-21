@@ -1,0 +1,17 @@
+{
+  "acc": 78.873622636376,
+  "edit": 82.75501109534721,
+  "f1@10": 88.28125,
+  "f1@25": 86.71875,
+  "f1@50": 76.56249999999999,
+  "dataset": "gtea",
+  "features": "i3d",
+  "split": "3",
+  "seed": 1,
+  "feature_dim": 2048,
+  "epochs": 50,
+  "train_videos": 21,
+  "test_videos": 7,
+  "train_seconds": 61.1,
+  "torch": "2.14.1+cu126"
+}

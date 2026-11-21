@@ -1,0 +1,120 @@
+# MS-TCN, ported to Python 3 from the official code (github.com/yabufarha/ms-tcn, commit 33ed91c,
+# MIT license with the Commons Clause, see LICENSE-ms-tcn). The model, loss, optimiser and training
+# loop are unchanged. Changes: Python 3 syntax; only the last epoch's weights are saved (the official
+# predict step loads the last epoch, so results are the same); predict returns label lists instead of
+# writing result files; an optional set of feature-length rules for features that are not I3D.
+import copy
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import optim
+
+
+class MultiStageModel(nn.Module):
+    def __init__(self, num_stages, num_layers, num_f_maps, dim, num_classes):
+        super().__init__()
+        self.stage1 = SingleStageModel(num_layers, num_f_maps, dim, num_classes)
+        self.stages = nn.ModuleList([copy.deepcopy(SingleStageModel(num_layers, num_f_maps, num_classes, num_classes))
+                                     for _ in range(num_stages - 1)])
+
+    def forward(self, x, mask):
+        out = self.stage1(x, mask)
+        outputs = out.unsqueeze(0)
+        for s in self.stages:
+            out = s(F.softmax(out, dim=1) * mask[:, 0:1, :], mask)
+            outputs = torch.cat((outputs, out.unsqueeze(0)), dim=0)
+        return outputs
+
+
+class SingleStageModel(nn.Module):
+    def __init__(self, num_layers, num_f_maps, dim, num_classes):
+        super().__init__()
+        self.conv_1x1 = nn.Conv1d(dim, num_f_maps, 1)
+        self.layers = nn.ModuleList([copy.deepcopy(DilatedResidualLayer(2 ** i, num_f_maps, num_f_maps))
+                                     for i in range(num_layers)])
+        self.conv_out = nn.Conv1d(num_f_maps, num_classes, 1)
+
+    def forward(self, x, mask):
+        out = self.conv_1x1(x)
+        for layer in self.layers:
+            out = layer(out, mask)
+        return self.conv_out(out) * mask[:, 0:1, :]
+
+
+class DilatedResidualLayer(nn.Module):
+    def __init__(self, dilation, in_channels, out_channels):
+        super().__init__()
+        self.conv_dilated = nn.Conv1d(in_channels, out_channels, 3, padding=dilation, dilation=dilation)
+        self.conv_1x1 = nn.Conv1d(out_channels, out_channels, 1)
+        self.dropout = nn.Dropout()
+
+    def forward(self, x, mask):
+        out = F.relu(self.conv_dilated(x))
+        out = self.conv_1x1(out)
+        out = self.dropout(out)
+        return (x + out) * mask[:, 0:1, :]
+
+
+class Trainer:
+    def __init__(self, num_blocks, num_layers, num_f_maps, dim, num_classes):
+        self.model = MultiStageModel(num_blocks, num_layers, num_f_maps, dim, num_classes)
+        self.ce = nn.CrossEntropyLoss(ignore_index=-100)
+        self.mse = nn.MSELoss(reduction="none")
+        self.num_classes = num_classes
+
+    def train(self, save_dir, batch_gen, num_epochs, batch_size, learning_rate, device, log=print):
+        self.model.train()
+        self.model.to(device)
+        optimizer = optim.Adam(self.model.parameters(), lr=learning_rate)
+        for epoch in range(num_epochs):
+            epoch_loss = 0
+            correct = 0
+            total = 0
+            while batch_gen.has_next():
+                batch_input, batch_target, mask = batch_gen.next_batch(batch_size)
+                batch_input, batch_target, mask = batch_input.to(device), batch_target.to(device), mask.to(device)
+                optimizer.zero_grad()
+                predictions = self.model(batch_input, mask)
+
+                loss = 0
+                for p in predictions:
+                    loss += self.ce(p.transpose(2, 1).contiguous().view(-1, self.num_classes), batch_target.view(-1))
+                    loss += 0.15 * torch.mean(torch.clamp(
+                        self.mse(F.log_softmax(p[:, :, 1:], dim=1), F.log_softmax(p.detach()[:, :, :-1], dim=1)),
+                        min=0, max=16) * mask[:, :, 1:])
+
+                epoch_loss += loss.item()
+                loss.backward()
+                optimizer.step()
+
+                _, predicted = torch.max(predictions[-1].data, 1)
+                correct += ((predicted == batch_target).float() * mask[:, 0, :].squeeze(1)).sum().item()
+                total += torch.sum(mask[:, 0, :]).item()
+
+            batch_gen.reset()
+            log("[epoch %d]: epoch loss = %f,   acc = %f" % (epoch + 1, epoch_loss / len(batch_gen.list_of_examples),
+                                                          float(correct) / total))
+        torch.save(self.model.state_dict(), save_dir + "/epoch-" + str(num_epochs) + ".model")
+
+    def predict(self, model_dir, load_features, vid_list, epoch, actions_dict, device, sample_rate):
+        """Frame-level label lists per video, as the official predict step writes them."""
+        index_to_action = {v: k for k, v in actions_dict.items()}
+        self.model.eval()
+        out = {}
+        with torch.no_grad():
+            self.model.to(device)
+            self.model.load_state_dict(torch.load(model_dir + "/epoch-" + str(epoch) + ".model", map_location=device))
+            for vid in vid_list:
+                features = load_features(vid)
+                features = features[:, ::sample_rate]
+                input_x = torch.tensor(features, dtype=torch.float).unsqueeze(0).to(device)
+                predictions = self.model(input_x, torch.ones(input_x.size(), device=device))
+                _, predicted = torch.max(predictions[-1].data, 1)
+                predicted = predicted.squeeze().tolist()
+                recognition = []
+                for p in predicted:
+                    recognition += [index_to_action[p]] * sample_rate
+                out[vid] = recognition
+        return out

@@ -1,0 +1,29 @@
+# data: fetched by scripts/download_data.py and never committed. The Breakfast videos carry no
+# licence on their Hugging Face card, and the features are derived from them.
+data/
+cache/
+
+# runs: the metrics, training logs and test predictions are committed (they are the published
+# numbers, and scripts/per_action.py and scripts/figures.py rebuild everything from them without a
+# GPU); the weights are not.
+runs/**/*.model
+runs/_logs/
+runs/queue*
+
+# the official MS-TCN clone the port was checked against (github.com/yabufarha/ms-tcn)
+third_party/
+
+# local planning notes
+PLAN.md
+
+# python
+__pycache__/
+*.pyc
+.venv/
+uv.lock
+
+# os / editors
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
