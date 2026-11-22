@@ -66,7 +66,7 @@ def run_group(args, settings, split: str, seed: int, device) -> None:
         train_list = [v for v in train_list if not lo <= subject(v) <= hi]
         split_name = f"split{split}-val{lo}-{hi}"
 
-    outs = {name: Path(args.out) / args.dataset / name / split_name / f"seed{seed}" for name, _, _ in settings}
+    outs = {name: Path(args.out) / args.dataset / name / split_name / f"seed{seed}" for name, *_ in settings}
     todo = [s for s in settings if not (outs[s[0]] / "metrics.json").exists()]
     if not todo:
         print(f"{split_name} seed {seed}: all settings done, skipped", flush=True)

@@ -11,3 +11,4 @@ matplotlib==3.11.2
 huggingface-hub==2.4.0
 remotezip==0.12.6
 requests==2.34.2
+modal==1.6.4  # only for scripts/modal_grid.py, the cloud runs

@@ -2,7 +2,9 @@
 seeds, plus each setting's difference from a reference setting, paired by split and seed.
 
 Usage: python -I scripts/results_table.py runs/breakfast i3d dinov2-vits14 dinov2-vits14-motion4 ...
-The first name is the reference for the differences. Writes results/summary.csv.
+       [--ref=i3d --ref=dinov2-vits14]
+The references for the differences default to the first name. Writes results/summary.csv and
+results/differences.csv.
 """
 import json
 import sys
@@ -24,7 +26,7 @@ def load(folder: Path) -> dict:
         m = json.loads(p.read_text())
         last = (p.parent / "train.log").read_text().strip().splitlines()[-1]
         train_acc = 100 * float(last.split("acc =")[1].split()[0])
-        out[(m["split"], m["seed"])] = [m[k] for k in KEYS] + [train_acc]
+        out[(m["split"], m["seed"])] = [m[k] for k in KEYS[:-1]] + [train_acc]
     return out
 
 
@@ -41,7 +43,8 @@ def fmt(mean, sd) -> list[str]:
 
 
 def main() -> None:
-    runs_dir, names = Path(sys.argv[1]), sys.argv[2:]
+    runs_dir, names = Path(sys.argv[1]), [n for n in sys.argv[2:] if not n.startswith("--ref=")]
+    refs = [a.split("=", 1)[1] for a in sys.argv[2:] if a.startswith("--ref=")] or names[:1]
     data = {n: load(runs_dir / n) for n in names}
     rows = []
     print("| Features | " + " | ".join(KEYS) + " | runs |")
@@ -55,20 +58,26 @@ def main() -> None:
         rows.append({"name": n, "runs": len(data[n]), "seeds": len(a),
                      **{k: m for k, m in zip(KEYS, mean)}, **{f"{k} sd": s for k, s in zip(KEYS, sd)}})
         print(f"| {n} | " + " | ".join(fmt(mean, sd)) + f" | {len(data[n])} |")
-    ref = names[0]
-    print(f"\nDifference from {ref}, paired by split and seed (mean over splits per seed, then over seeds):")
-    for n in names[1:]:
-        common = sorted(set(data[n]) & set(data[ref]))
-        diff = {k: list(np.subtract(data[n][k], data[ref][k])) for k in common}
-        a = per_seed(diff)
-        if not len(a):
-            continue
-        sd = a.std(0, ddof=1) if len(a) > 1 else np.zeros(len(KEYS))
-        print(f"| {n} - {ref} | " + " | ".join(f"{m:+.1f} ± {s:.1f}" for m, s in zip(a.mean(0), sd))
-              + f" | {len(common)} |")
+    diffs = []
+    for ref in refs:
+        print(f"\nDifference from {ref}, paired by split and seed (mean over splits per seed, then over seeds):")
+        for n in names:
+            if n == ref:
+                continue
+            common = sorted(set(data[n]) & set(data[ref]))
+            diff = {k: list(np.subtract(data[n][k], data[ref][k])) for k in common}
+            a = per_seed(diff)
+            if not len(a):
+                continue
+            sd = a.std(0, ddof=1) if len(a) > 1 else np.zeros(len(KEYS))
+            diffs.append({"name": n, "ref": ref, "runs": len(common), "seeds": len(a),
+                          **{k: m for k, m in zip(KEYS, a.mean(0))}, **{f"{k} sd": s for k, s in zip(KEYS, sd)}})
+            print(f"| {n} - {ref} | " + " | ".join(f"{m:+.1f} ± {s:.1f}" for m, s in zip(a.mean(0), sd))
+                  + f" | {len(common)} |")
     out = ROOT / "results"
     out.mkdir(exist_ok=True)
     pd.DataFrame(rows).to_csv(out / "summary.csv", index=False, float_format="%.2f")
+    pd.DataFrame(diffs).to_csv(out / "differences.csv", index=False, float_format="%.2f")
 
 
 if __name__ == "__main__":

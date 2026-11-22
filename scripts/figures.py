@@ -8,7 +8,8 @@ per-action: per-action F1@50 differences against how much each action moves (res
 Usage:
   python -I scripts/figures.py timelines runs/breakfast split1 1538574472 coffee dinov2-vits14 \
       "i3d=I3D" "dinov2-vits14=DINOv2 ViT-S" "dinov2-vits14-motion4=DINOv2 ViT-S + motion"
-  python -I scripts/figures.py per-action i3d dinov2-vits14 dinov2-vits14-motion4
+  python -I scripts/figures.py per-action "i3d=I3D" "dinov2-vits14=DINOv2 ViT-S" \
+      "dinov2-vits14-motion4=with motion"
 """
 import sys
 from pathlib import Path
@@ -100,30 +101,52 @@ def timelines(runs: Path, split: str, seed: str, activity: str, ref: str, rows: 
         ax.set_title(f"{v[:-4]}  ({q}th percentile of {dict(rows)[ref]} F1@50 among {len(vids)} test videos)",
                      loc="left", fontsize=9, color=INK2)
     np.atleast_1d(axes)[-1].set_xlabel("seconds")
-    handles = [Patch(color=colors[a], label=names[a]) for a in actions]
+    handles = [Patch(color=colors[a], label=names[a].replace("_", " ")) for a in actions]
     handles.append(Patch(color=BACKGROUND, label="SIL (background)"))
     if used_other:
         handles.append(Patch(color=OTHER, label="an action of another activity"))
-    fig.legend(handles=handles, loc="lower center", ncol=min(5, len(handles)), frameon=False,
-               bbox_to_anchor=(0.5, -0.02 - 0.03 * (len(handles) > 5)), handlelength=1.2)
+    fig.legend(handles=handles, loc="upper center", ncol=min(6, len(handles)), frameon=False,
+               bbox_to_anchor=(0.5, 0.0), handlelength=1.2)
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / f"timelines_{activity}.png", dpi=200, bbox_inches="tight")
     print(f"wrote {OUT / f'timelines_{activity}.png'}: {', '.join(p[:-4] for p in picks)}")
 
 
-def per_action(ref: str, a: str, b: str) -> None:
+def label_points(ax, points) -> None:
+    """Label (x, y, text) points in order, each at the first of four offsets where it overlaps no
+    earlier label and stays inside the axes; a label that fits nowhere is left out."""
+    renderer = ax.figure.canvas.get_renderer()
+    frame = ax.get_window_extent(renderer)
+    placed = []
+    for x, y, text in points:
+        for dx, dy, ha, va in ((4, 2, "left", "bottom"), (4, -2, "left", "top"),
+                               (-4, 2, "right", "bottom"), (-4, -2, "right", "top")):
+            t = ax.annotate(text, (x, y), xytext=(dx, dy), textcoords="offset points", ha=ha, va=va,
+                            fontsize=7.5, color=INK2)
+            box = t.get_window_extent(renderer).expanded(1.04, 1.15)
+            if (not any(box.overlaps(p) for p in placed) and frame.x0 <= box.x0 and box.x1 <= frame.x1
+                    and frame.y0 <= box.y0 and box.y1 <= frame.y1):
+                placed.append(box)
+                break
+            t.remove()
+
+
+def per_action(rows: list[str], min_segments: int = 50) -> None:
+    """Two panels: the second setting minus the first, and the third minus the second, per action.
+    The background class and actions with fewer than min_segments segments in the data are left
+    out (the rare ones score 0 in every setting)."""
+    (ref, ref_label), (a, a_label), (b, b_label) = (r.split("=", 1) for r in rows)
     t = pd.read_csv(ROOT / "results" / "per_action.csv")
-    panels = [(f"{a} f1@50", f"{ref} f1@50", f"{a} minus {ref}"), (f"{b} f1@50", f"{a} f1@50", f"{b} minus {a}")]
+    t = t[(t["action"] != "SIL") & (t["segments"] >= min_segments)]
+    panels = [(f"{a} f1@50", f"{ref} f1@50", f"{a_label} minus {ref_label}"),
+              (f"{b} f1@50", f"{a} f1@50", f"{b_label} minus {a_label}")]
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), sharex=True)
     for ax, (hi, lo, title) in zip(axes, panels):
         d = t[["action", "motion", "segments"]].assign(diff=t[hi] - t[lo]).dropna()
         rho = d["motion"].rank().corr(d["diff"].rank())
         ax.axhline(0, color=AXIS, linewidth=1)
         ax.scatter(d["motion"], d["diff"], s=22, color=SERIES[0], edgecolor=SURFACE, linewidth=1, zorder=3)
-        for _, r in pd.concat([d.nlargest(3, "diff"), d.nsmallest(3, "diff")]).iterrows():
-            ax.annotate(r["action"], (r["motion"], r["diff"]), xytext=(4, 2), textcoords="offset points",
-                        fontsize=7.5, color=INK2)
-        ax.set_title(f"{title}   (Spearman ρ = {rho:.2f}, {len(d)} actions)", loc="left", fontsize=9, color=INK)
+        ax.set_title(f"{title}\nSpearman ρ = {rho:.2f}, {len(d)} actions", loc="left", fontsize=9, color=INK)
         ax.grid(True, color=GRID, linewidth=0.6)
         ax.set_axisbelow(True)
         for side in ("top", "right"):
@@ -131,6 +154,10 @@ def per_action(ref: str, a: str, b: str) -> None:
         ax.set_xlabel("motion: mean grey-level change between frames")
     axes[0].set_ylabel("F1@50 difference (points)")
     fig.tight_layout()
+    for ax, (hi, lo, _) in zip(axes, panels):
+        d = t[["action", "motion"]].assign(diff=t[hi] - t[lo]).dropna()
+        ends = pd.concat([d.nsmallest(3, "diff"), d.nlargest(3, "diff")])
+        label_points(ax, [(r["motion"], r["diff"], r["action"].replace("_", " ")) for _, r in ends.iterrows()])
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / "per_action.png", dpi=200, bbox_inches="tight")
     print(f"wrote {OUT / 'per_action.png'}")
@@ -140,4 +167,4 @@ if __name__ == "__main__":
     if sys.argv[1] == "timelines":
         timelines(Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6], sys.argv[7:])
     else:
-        per_action(sys.argv[2], sys.argv[3], sys.argv[4])
+        per_action(sys.argv[2:5])
