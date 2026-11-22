@@ -1,0 +1,28 @@
+{
+  "acc": 33.96652639112393,
+  "edit": 44.96968515913522,
+  "f1@10": 34.5001143902997,
+  "f1@25": 28.89498970487303,
+  "f1@50": 18.69137497140243,
+  "dataset": "breakfast",
+  "features": "dinov2-vits14",
+  "name": "val-dinov2-vits14-motion8",
+  "split": "1",
+  "seed": 1538574472,
+  "feature_dim": 768,
+  "motion_k": 8,
+  "val_subjects": "16-28",
+  "epochs": 50,
+  "train_videos": 992,
+  "test_videos": 449,
+  "excluded_videos": 20,
+  "train_seconds": 3348.9,
+  "trained_alongside": [
+    "val-dinov2-vits14",
+    "val-dinov2-vits14-motion2",
+    "val-dinov2-vits14-motion4",
+    "val-dinov2-vits14-motion8"
+  ],
+  "peak_gpu_mb": 1340,
+  "torch": "2.14.1+cu126"
+}

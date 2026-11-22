@@ -129,7 +129,12 @@ def main() -> None:
         source = FeatureSource([(folder, 0)])
         raw = {folder: torch.from_numpy(np.load(folder / "w.npy")).pin_memory()}
         assert np.array_equal(source.inputs(raw, 333, device)[0][0].cpu().numpy(), make_loader(folder, 0)("w.txt"))
-    print("inputs built on the card equal the CPU loader's, exactly")
+        # centred inputs: the mean is summed in a different order on the card, so equal to float precision
+        source = FeatureSource([(folder, 0, True), (folder, 4, True)])
+        raw = source.load("v.txt")
+        for (f, k, c), x in zip(source.settings, source.inputs(raw, 333, device)):
+            assert np.allclose(x[0].cpu().numpy(), make_loader(f, k, c)("v.txt"), rtol=1e-5, atol=1e-5), f"centred k={k}"
+    print("inputs built on the card equal the CPU loader's (exactly; centred ones to float precision)")
 
 
 if __name__ == "__main__":

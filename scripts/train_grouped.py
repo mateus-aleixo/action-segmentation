@@ -7,8 +7,9 @@ the official format), the official predict step and metrics. Results go to
 runs/<dataset>/<name>/split<k>/seed<s>/, the layout train_mstcn.py uses; a setting whose
 metrics.json exists is left out of the group, and a split and seed with all settings done is skipped.
 
-A setting is NAME=FOLDER, or NAME=FOLDER:K for the motion cue (features next to their difference
-from K frames earlier). --exclude and --val-subjects work as in train_mstcn.py.
+A setting is NAME=FOLDER, NAME=FOLDER:K for the motion cue (features next to their difference from
+K frames earlier), and NAME=FOLDER:K:center to subtract each video's own mean feature first.
+--exclude and --val-subjects work as in train_mstcn.py.
 
 Usage:
   python -I scripts/train_grouped.py --data data/ms-tcn/data
@@ -36,8 +37,12 @@ from train_mstcn import read_list, subject  # noqa: E402
 
 def parse_setting(text: str):
     name, spec = text.split("=", 1)
-    folder, _, k = spec.partition(":")
-    return name, Path(folder), int(k) if k else 0
+    parts = spec.split(":")
+    center = parts[-1] == "center"
+    if center:
+        parts.pop()
+    k = int(parts.pop()) if len(parts) > 1 and parts[-1].isdigit() else 0
+    return name, Path(":".join(parts)), k, center
 
 
 def run_group(args, settings, split: str, seed: int, device) -> None:
@@ -73,7 +78,7 @@ def run_group(args, settings, split: str, seed: int, device) -> None:
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
 
-    source = FeatureSource([(folder, k) for _, folder, k in todo])
+    source = FeatureSource([(folder, k, center) for _, folder, k, center in todo])
     raw = source.load(train_list[0])
     dims = [x.shape[1] for x in source.inputs(raw, source.frames(raw), device)]
     t0 = time.time()
@@ -101,10 +106,10 @@ def run_group(args, settings, split: str, seed: int, device) -> None:
         torch.save(trainer.model.official_state(g), outs[name] / f"epoch-{args.epochs}.model")
 
     recognitions = trainer.predict(source, test_list, actions_dict, device)
-    for g, (name, folder, k) in enumerate(todo):
+    for g, (name, folder, k, center) in enumerate(todo):
         metrics = evaluate(recognitions[g], gt_path, test_list)
         metrics.update({"dataset": args.dataset, "features": folder.name, "name": name, "split": split,
-                        "seed": seed, "feature_dim": dims[g], "motion_k": k,
+                        "seed": seed, "feature_dim": dims[g], "motion_k": k, "centered": center,
                         "val_subjects": args.val_subjects, "epochs": args.epochs,
                         "train_videos": len(train_list), "test_videos": len(test_list),
                         "excluded_videos": n_excluded, "train_seconds": round(train_s, 1),
@@ -124,7 +129,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", required=True)
     ap.add_argument("--dataset", default="breakfast")
-    ap.add_argument("--setting", action="append", required=True, help="NAME=FOLDER or NAME=FOLDER:K")
+    ap.add_argument("--setting", action="append", required=True, help="NAME=FOLDER[:K][:center]")
     ap.add_argument("--splits", default="1,2,3,4")
     ap.add_argument("--seeds", default="1538574472")
     ap.add_argument("--epochs", type=int, default=50)

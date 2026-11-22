@@ -126,15 +126,16 @@ def group_losses(predictions, target, mask, num_classes):
 
 
 class FeatureSource:
-    """The inputs of each model for a video. A setting is (folder, k): the features stored in folder
-    (dim x frames, read as float32), and with k > 0 next to their difference from k frames earlier
-    (the first k frames take their difference from frame 0), as train_mstcn.make_loader builds them.
-    Each folder is read once per video and the motion inputs are built on the card; the values are
-    the same as the CPU path's (checked in tests/test_grouped.py)."""
+    """The inputs of each model for a video. A setting is (folder, k) or (folder, k, center): the
+    features stored in folder (dim x frames, read as float32), with center minus the video's own mean
+    feature, and with k > 0 next to their difference from k frames earlier (the first k frames take
+    their difference from frame 0), as train_mstcn.make_loader builds them. Each folder is read once
+    per video and the inputs are built on the card; the values match the CPU path's (checked in
+    tests/test_grouped.py)."""
 
     def __init__(self, settings):
-        self.settings = [(Path(folder), int(k)) for folder, k in settings]
-        self.folders = list(dict.fromkeys(folder for folder, _ in self.settings))
+        self.settings = [(Path(s[0]), int(s[1]), bool(s[2]) if len(s) > 2 else False) for s in settings]
+        self.folders = list(dict.fromkeys(s[0] for s in self.settings))
 
     def load(self, vid):
         """The stored arrays of one video, in pinned memory for a fast copy to the card."""
@@ -147,8 +148,10 @@ class FeatureSource:
     def inputs(self, raw, n, device):
         on_card = {f: a.to(device, non_blocking=True).float() for f, a in raw.items()}
         xs = []
-        for folder, k in self.settings:
+        for folder, k, center in self.settings:
             x = on_card[folder]
+            if center:
+                x = x - x.mean(dim=1, keepdim=True)
             if k:
                 earlier = (torch.arange(x.shape[1], device=device) - k).clamp(min=0)
                 x = torch.cat([x, x - x[:, earlier]], dim=0)

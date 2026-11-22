@@ -49,9 +49,12 @@ def subject(vid: str) -> int:
     return int(vid.split("_")[0][1:])  # Breakfast: P03_cam01_P03_cereals.txt -> 3
 
 
-def make_loader(features_dir: Path, motion_k: int):
+def make_loader(features_dir: Path, motion_k: int, center: bool = False):
+    """Features as MS-TCN reads them; center subtracts the video's own mean feature (no labels used)."""
     def load_features(vid: str) -> np.ndarray:
         f = np.load(features_dir / (vid.split(".")[0] + ".npy")).astype(np.float32, copy=False)
+        if center:
+            f = f - f.mean(axis=1, keepdims=True)
         if motion_k:
             earlier = np.maximum(np.arange(f.shape[1]) - motion_k, 0)
             f = np.concatenate([f, f - f[:, earlier]], axis=0)
