@@ -1,0 +1,30 @@
+{
+  "acc": 34.371867603883075,
+  "edit": 43.98293078263336,
+  "f1@10": 34.294835252536764,
+  "f1@25": 28.75384790787823,
+  "f1@50": 18.88040132254019,
+  "dataset": "breakfast",
+  "features": "dinov2-vits14",
+  "name": "dinov2-vits14-motion4",
+  "split": "2",
+  "seed": 1538574472,
+  "feature_dim": 768,
+  "motion_k": 4,
+  "centered": false,
+  "val_subjects": "",
+  "epochs": 50,
+  "train_videos": 1243,
+  "test_videos": 449,
+  "excluded_videos": 20,
+  "train_seconds": 2635.5,
+  "trained_alongside": [
+    "i3d",
+    "dinov2-vits14",
+    "dinov2-vits14-motion4",
+    "dinov2-vitb14",
+    "dinov2-vits14-centred"
+  ],
+  "peak_gpu_mb": 1671,
+  "torch": "2.14.1+cu126"
+}

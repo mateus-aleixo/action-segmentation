@@ -1,0 +1,4 @@
+features,videos,frames,dim,between share
+i3d,1692,3543679,2048,0.3261
+dinov2-vits14,1692,3543679,384,0.7530
+dinov2-vitb14,1692,3543679,768,0.7221

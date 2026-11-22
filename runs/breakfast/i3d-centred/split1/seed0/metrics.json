@@ -1,0 +1,27 @@
+{
+  "acc": 71.3797435247123,
+  "edit": 62.96547273223575,
+  "f1@10": 55.029227978230196,
+  "f1@25": 51.15904051602501,
+  "f1@50": 42.81394880064503,
+  "dataset": "breakfast",
+  "features": "i3d",
+  "name": "i3d-centred",
+  "split": "1",
+  "seed": 0,
+  "feature_dim": 2048,
+  "motion_k": 0,
+  "centered": true,
+  "val_subjects": "",
+  "epochs": 50,
+  "train_videos": 1441,
+  "test_videos": 251,
+  "excluded_videos": 20,
+  "train_seconds": 2419.0,
+  "trained_alongside": [
+    "i3d-centred",
+    "dinov2-vitb14-centred"
+  ],
+  "peak_gpu_mb": 722,
+  "torch": "2.14.1+cu126"
+}

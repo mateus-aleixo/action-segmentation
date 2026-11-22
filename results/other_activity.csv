@@ -1,0 +1,8 @@
+name,frames,other activity share
+i3d,10631037,0.1407
+i3d-centred,10631037,0.1384
+dinov2-vits14,10631037,0.3358
+dinov2-vits14-motion4,10631037,0.3432
+dinov2-vits14-centred,10631037,0.2671
+dinov2-vitb14,10631037,0.2766
+dinov2-vitb14-centred,10631037,0.2192
