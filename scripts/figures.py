@@ -112,20 +112,29 @@ def timelines(runs: Path, split: str, seed: str, activity: str, ref: str, rows: 
     print(f"wrote {OUT / f'timelines_{activity}.png'}: {', '.join(p[:-4] for p in picks)}")
 
 
-def label_points(ax, points) -> None:
-    """Label (x, y, text) points in order, each at the first of four offsets where it overlaps no
-    earlier label and stays inside the axes; a label that fits nowhere is left out."""
+def label_points(ax, points, markers) -> None:
+    """Label (x, y, text) points in order, each at the first of six offsets (level with the point
+    first, so a label reads as its own point's) where it overlaps no
+    earlier label and no other marker and stays inside the axes; a label that fits nowhere is
+    left out. markers: (n, 2) data coordinates of every point drawn in the panel."""
     renderer = ax.figure.canvas.get_renderer()
     frame = ax.get_window_extent(renderer)
+    dots = ax.transData.transform(np.asarray(markers, dtype=float))
+    radius = 4 * ax.figure.dpi / 72  # about a marker's radius, in pixels
     placed = []
     for x, y, text in points:
-        for dx, dy, ha, va in ((4, 2, "left", "bottom"), (4, -2, "left", "top"),
+        anchor = ax.transData.transform((x, y))
+        others = dots[np.hypot(*(dots - anchor).T) > 0.5]
+        for dx, dy, ha, va in ((6, 0, "left", "center"), (-6, 0, "right", "center"),
+                               (4, 2, "left", "bottom"), (4, -2, "left", "top"),
                                (-4, 2, "right", "bottom"), (-4, -2, "right", "top")):
             t = ax.annotate(text, (x, y), xytext=(dx, dy), textcoords="offset points", ha=ha, va=va,
                             fontsize=7.5, color=INK2)
             box = t.get_window_extent(renderer).expanded(1.04, 1.15)
-            if (not any(box.overlaps(p) for p in placed) and frame.x0 <= box.x0 and box.x1 <= frame.x1
-                    and frame.y0 <= box.y0 and box.y1 <= frame.y1):
+            hits_dot = ((others[:, 0] > box.x0 - radius) & (others[:, 0] < box.x1 + radius)
+                        & (others[:, 1] > box.y0 - radius) & (others[:, 1] < box.y1 + radius)).any()
+            if (not hits_dot and not any(box.overlaps(p) for p in placed) and frame.x0 <= box.x0
+                    and box.x1 <= frame.x1 and frame.y0 <= box.y0 and box.y1 <= frame.y1):
                 placed.append(box)
                 break
             t.remove()
@@ -134,7 +143,8 @@ def label_points(ax, points) -> None:
 def per_action(rows: list[str], min_segments: int = 50) -> None:
     """Two panels: the second setting minus the first, and the third minus the second, per action.
     The background class and actions with fewer than min_segments segments in the data are left
-    out (the rare ones score 0 in every setting)."""
+    out: a score that rests on a handful of segments swings with each one (four of the ten score
+    0 in every setting)."""
     (ref, ref_label), (a, a_label), (b, b_label) = (r.split("=", 1) for r in rows)
     t = pd.read_csv(ROOT / "results" / "per_action.csv")
     t = t[(t["action"] != "SIL") & (t["segments"] >= min_segments)]
@@ -157,7 +167,8 @@ def per_action(rows: list[str], min_segments: int = 50) -> None:
     for ax, (hi, lo, _) in zip(axes, panels):
         d = t[["action", "motion"]].assign(diff=t[hi] - t[lo]).dropna()
         ends = pd.concat([d.nsmallest(3, "diff"), d.nlargest(3, "diff")])
-        label_points(ax, [(r["motion"], r["diff"], r["action"].replace("_", " ")) for _, r in ends.iterrows()])
+        label_points(ax, [(r["motion"], r["diff"], r["action"].replace("_", " ")) for _, r in ends.iterrows()],
+                     d[["motion", "diff"]].to_numpy())
     OUT.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT / "per_action.png", dpi=200, bbox_inches="tight")
     print(f"wrote {OUT / 'per_action.png'}")
